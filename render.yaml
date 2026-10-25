@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: breast-cancer-classifier-api
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: ALLOWED_ORIGINS
+        value: "*"
+    plan: free

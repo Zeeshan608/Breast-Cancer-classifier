@@ -1,9 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
-
-/* Address of the Python (FastAPI) server that holds the trained model.
-   Set VITE_API_URL in a .env file (see .env.example). */
-const API_URL = (import.meta.env.VITE_API_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
+import { predictCancer } from "./model.js";
 
 /* ------------------------------------------------------------------ */
 /* The 30 inputs, in exactly the order the model was trained on.       */
@@ -138,15 +135,9 @@ export default function App() {
   );
   const totalFilled = filledPerGroup.reduce((a, b) => a + b, 0);
 
-  /* Check once whether the model server is reachable. */
+  /* Model is directly embedded in React and ready immediately */
   useEffect(() => {
-    const ctrl = new AbortController();
-    fetch(`${API_URL}/health`, { signal: ctrl.signal })
-      .then((r) => setServer(r.ok ? "online" : "offline"))
-      .catch((e) => {
-        if (e.name !== "AbortError") setServer("offline");
-      });
-    return () => ctrl.abort();
+    setServer("online");
   }, []);
 
   /* On small screens the result sits below the form, so bring it into view. */
@@ -216,7 +207,7 @@ export default function App() {
     tabRefs.current[next]?.focus();
   }
 
-  async function handlePredict() {
+  function handlePredict() {
     setSubmitted(true);
     const firstBad = numbers.findIndex((n) => Number.isNaN(n));
     if (firstBad !== -1) {
@@ -233,59 +224,22 @@ export default function App() {
     setError("");
     setResult(null);
 
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 60000);
-
-    try {
-      const res = await fetch(`${API_URL}/predict`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ features: numbers }),
-        signal: ctrl.signal,
-      });
-
-      if (!res.ok) {
-        let detail = "";
-        try {
-          const body = await res.json();
-          detail = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail);
-        } catch {
-          /* ignore: the body was not JSON */
-        }
-        throw new Error(detail || `The server answered with status ${res.status}.`);
+    // Smooth UI transition for model inference
+    setTimeout(() => {
+      try {
+        const pred = predictCancer(numbers);
+        setResult({
+          probability: pred.probability,
+          label: pred.label,
+          outside,
+        });
+        setServer("online");
+        setStatus("done");
+      } catch (err) {
+        setError(err.message || "An error occurred while evaluating the neural network.");
+        setStatus("error");
       }
-
-      const data = await res.json();
-      if (
-        typeof data.probability !== "number" ||
-        !Number.isFinite(data.probability) ||
-        data.probability < 0 ||
-        data.probability > 1
-      ) {
-        throw new Error("The server sent a reply this page cannot read.");
-      }
-
-      setResult({
-        probability: data.probability,
-        label: data.label || (data.probability >= 0.5 ? "Malignant" : "Benign"),
-        outside,
-      });
-      setServer("online");
-      setStatus("done");
-    } catch (err) {
-      let message = err.message;
-      if (err.name === "AbortError") {
-        message = "The server took too long to answer. Free hosting can need a minute to wake up, so try again shortly.";
-        setServer("offline");
-      } else if (err instanceof TypeError) {
-        message = `Could not reach the model server at ${API_URL}. Check that it is running and that the address is correct.`;
-        setServer("offline");
-      }
-      setError(message);
-      setStatus("error");
-    } finally {
-      clearTimeout(timer);
-    }
+    }, 200);
   }
 
   const group = GROUPS[active];
@@ -304,9 +258,9 @@ export default function App() {
         </div>
         <p className={`status status-${server}`} role="status">
           <span className="status-dot" aria-hidden="true" />
-          {server === "checking" && "Checking model server"}
-          {server === "online" && "Model server online"}
-          {server === "offline" && "Model server not reachable"}
+          {server === "checking" && "Loading model"}
+          {server === "online" && "AI Model ready"}
+          {server === "offline" && "Model offline"}
         </p>
       </header>
 

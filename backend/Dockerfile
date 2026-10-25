@@ -11,5 +11,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY --chown=user . /app
 
-# Render sets PORT env var; default to 10000
-CMD uvicorn main:app --host 0.0.0.0 --port ${PORT:-10000}
+# Hugging Face Spaces uses port 7860 by default; Render sets $PORT dynamically
+CMD uvicorn main:app --host 0.0.0.0 --port ${PORT:-7860}
